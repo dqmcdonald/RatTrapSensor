@@ -28,8 +28,7 @@
 #include <SPI.h>
 #include <RH_RF95.h>
 
-#define DEBUG 1
-
+#include <EEPROM.h>
 
 #define RFM95_CS 10  // Clock select should be on 10
 #define RFM95_RST 9  // Reset on 9
@@ -44,9 +43,50 @@ RH_RF95 rf95(RFM95_CS, RFM95_INT);
 // Use pin 2 as wake up pin
 const int WAKE_UP_PIN = 2;
 
+const int ID_LEN = 6;
+// The station ID
+char id[ID_LEN];
+
+const int MAX_RETRIES = 3; // Try to send three times:
+
+
+
 void wakeUp()
 {
   // Just a handler for the pin interrupt.
+}
+
+
+
+// If there is a serial connection then allow configuration of the
+// ID. The ID is a six character code which is stored in EEPROM
+void configureID() {
+
+  Serial.setTimeout(10000); // Will wait 10 seconds for input
+  Serial.println("To configure ID enter 'y'");
+
+  char answer;
+  int i;
+
+  int bytes_read = Serial.readBytes(&answer, 1);
+  if ( bytes_read == 1 && answer == 'y') {
+    Serial.println("Enter six character ID");
+    bytes_read = Serial.readBytes(id, 6 );
+    if ( bytes_read == 6 ) {
+      Serial.print("Id = ");
+      Serial.println(id);
+      for (  i = 0; i < ID_LEN; i++ ) {
+        EEPROM.write(i, id[i]);
+      }
+    }
+  }
+  for (  i = 0; i < ID_LEN; i++ ) {
+    id[i] = EEPROM.read(i);
+  }
+
+  Serial.print("Using station ID:" );
+  Serial.println(id);
+
 }
 
 
@@ -57,9 +97,7 @@ void setupLoRa() {
   pinMode(RFM95_RST, OUTPUT);
   digitalWrite(RFM95_RST, HIGH);
 
-#ifdef DEBUG
-  Serial.println("Arduino LoRa TX Test!");
-#endif
+  Serial.println("Initializing LoRa radio");
 
   // manual reset
   digitalWrite(RFM95_RST, LOW);
@@ -68,23 +106,20 @@ void setupLoRa() {
   delay(10);
 
   while (!rf95.init()) {
-#ifdef DEBUG
     Serial.println("LoRa radio init failed");
-#endif
     while (1);
   }
-#ifdef DEBUG
-  Serial.println("LoRa radio init OK!");
-#endif
+
+  Serial.println("LoRa radio init OK");
 
   // Defaults after init are 434.0MHz, modulation GFSK_Rb250Fd250, +13dbM
   if (!rf95.setFrequency(RF95_FREQ)) {
     Serial.println("setFrequency failed");
     while (1);
   }
-#ifdef DEBUG
+
   Serial.print("Set Freq to: "); Serial.println(RF95_FREQ);
-#endif
+
 
   // Defaults after init are 434.0MHz, 13dBm, Bw = 125 kHz, Cr = 4/5, Sf = 128chips/symbol, CRC on
 
@@ -95,9 +130,6 @@ void setupLoRa() {
 
   // Set to slow speed for longer range
   rf95.setModemConfig(RH_RF95::Bw31_25Cr48Sf512);
-
-
-
 }
 
 
@@ -105,11 +137,14 @@ void setupLoRa() {
 
 void setup() {
 
-#ifdef DEBUG
+
   while (!Serial);
   Serial.begin(9600);
   delay(100);
-#endif
+
+  Serial.println("Rat Trap Sensor");
+
+  configureID();
 
   setupLoRa();
 
@@ -120,15 +155,13 @@ void setup() {
 
 }
 
-int16_t packetnum = 0;  // packet counter, we increment per xmission
-
-
 void loop() {
 
-#ifdef DEBUG
+
   Serial.println("About to sleep");
   Serial.flush();
-#endif
+
+  rf95.sleep();
 
   // Allow wake up pin to trigger interrupt on low.
   attachInterrupt(0, wakeUp, LOW);
@@ -142,35 +175,66 @@ void loop() {
 
 
   Serial.begin(9600);
-#ifdef DEBUG
+
   Serial.println("Awake");
-#endif
+
+  rf95.setModeIdle();
 
   delay(1000);
 
+  setupLoRa();
 
-  char radiopacket[20] = "Hello World #      ";
-  itoa(packetnum++, radiopacket + 13, 10);
-#ifdef DEBUG
+  char radiopacket[20] = "Trap Sprung:      ";
+
+  memcpy( radiopacket + 13, id, 6 );
+
   Serial.print("Sending "); Serial.println(radiopacket);
-#endif
+
   radiopacket[19] = 0;
 
-#ifdef DEBUG
-  Serial.println("Sending...");
-#endif
+  for( int attempt = 0; attempt < MAX_RETRIES; attempt++ ) {
+
+  Serial.print("Sending in attempt ");
+  Serial.print(attempt+1, DEC);
+  Serial.print(" of ");
+  Serial.println(MAX_RETRIES, DEC);
+
 
   delay(10);
   rf95.send((uint8_t *)radiopacket, 20);
 
-#ifdef DEBUG
+
   Serial.println("Waiting for packet to complete..."); delay(10);
-#endif
+
 
   rf95.waitPacketSent();
-
-
+  // Now wait for a reply
+  uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
+  uint8_t len = sizeof(buf);
+  Serial.println("Waiting for reply..."); delay(100);
+  if (rf95.waitAvailableTimeout(4000))
+  {
+    // Should be a reply message for us now
+    if (rf95.recv(buf, &len))
+    {
+      Serial.print("Got reply: ");
+      Serial.println((char*)buf);
+      Serial.print("RSSI: ");
+      Serial.println(rf95.lastRssi(), DEC);
+      break;
+    }
+    else
+    {
+      Serial.println("Receive failed");
+    }
+  }
+  else
+  {
+    Serial.println("No reply, is there a listener around?");
+  }
 
   delay(1000);
+
+  }
 
 }
