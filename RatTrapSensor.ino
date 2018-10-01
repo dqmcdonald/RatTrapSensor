@@ -13,6 +13,7 @@
     Pin Assignments:
      2 -> Vibration Switch -> GND
      3 -> LoRa DOI0
+     4 -> LED (Optional)
      9 -> LoRa Reset
     10 -> LoRa Clock Select (NSS)
     11 -> LoRa MISO
@@ -40,6 +41,8 @@
 // Singleton instance of the radio driver
 RH_RF95 rf95(RFM95_CS, RFM95_INT);
 
+void flashLED( int numflash, int on_time, int off_time );
+
 // Use pin 2 as wake up pin
 const int WAKE_UP_PIN = 2;
 
@@ -49,7 +52,7 @@ char id[ID_LEN];
 
 const int MAX_RETRIES = 3; // Try to send three times:
 
-
+const int OPT_LED_PIN = 4;
 
 void wakeUp()
 {
@@ -97,6 +100,8 @@ void setupLoRa() {
   pinMode(RFM95_RST, OUTPUT);
   digitalWrite(RFM95_RST, HIGH);
 
+
+
   Serial.println("Initializing LoRa radio");
 
   // manual reset
@@ -137,6 +142,10 @@ void setupLoRa() {
 
 void setup() {
 
+  pinMode(OPT_LED_PIN, OUTPUT);
+
+
+  
 
   while (!Serial);
   Serial.begin(9600);
@@ -146,7 +155,12 @@ void setup() {
 
   configureID();
 
+  
+
+
   setupLoRa();
+
+  flashLED( 5, 250, 50);
 
   // Configure wake up pin as input.
   // This will consumes few uA of current.
@@ -192,49 +206,70 @@ void loop() {
 
   radiopacket[19] = 0;
 
-  for( int attempt = 0; attempt < MAX_RETRIES; attempt++ ) {
+  for ( int attempt = 0; attempt < MAX_RETRIES; attempt++ ) {
 
-  Serial.print("Sending in attempt ");
-  Serial.print(attempt+1, DEC);
-  Serial.print(" of ");
-  Serial.println(MAX_RETRIES, DEC);
-
-
-  delay(10);
-  rf95.send((uint8_t *)radiopacket, 20);
+    Serial.print("Sending in attempt ");
+    Serial.print(attempt + 1, DEC);
+    Serial.print(" of ");
+    Serial.println(MAX_RETRIES, DEC);
 
 
-  Serial.println("Waiting for packet to complete..."); delay(10);
+    delay(10);
+
+    long int send_time = millis();
+    rf95.send((uint8_t *)radiopacket, 20);
 
 
-  rf95.waitPacketSent();
-  // Now wait for a reply
-  uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
-  uint8_t len = sizeof(buf);
-  Serial.println("Waiting for reply..."); delay(100);
-  if (rf95.waitAvailableTimeout(4000))
-  {
-    // Should be a reply message for us now
-    if (rf95.recv(buf, &len))
+    Serial.println("Waiting for packet to complete..."); delay(10);
+
+
+    rf95.waitPacketSent();
+
+    Serial.print("Time to send (ms) = "); 
+    Serial.println(millis() - send_time); 
+
+    
+    // Now wait for a reply
+    uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
+    uint8_t len = sizeof(buf);
+    Serial.println("Waiting for reply..."); delay(100);
+    if (rf95.waitAvailableTimeout(4000))
     {
-      Serial.print("Got reply: ");
-      Serial.println((char*)buf);
-      Serial.print("RSSI: ");
-      Serial.println(rf95.lastRssi(), DEC);
-      break;
+      // Should be a reply message for us now
+      if (rf95.recv(buf, &len))
+      {
+        Serial.print("Got reply: ");
+        Serial.println((char*)buf);
+        Serial.print("RSSI: ");
+        Serial.println(rf95.lastRssi(), DEC);
+        break;
+      }
+      else
+      {
+        Serial.println("Receive failed");
+      }
     }
     else
     {
-      Serial.println("Receive failed");
+      Serial.println("No reply, is there a listener around?");
     }
-  }
-  else
-  {
-    Serial.println("No reply, is there a listener around?");
-  }
 
-  delay(1000);
+
+   
+    delay(1000);
 
   }
+ flashLED( 5, 400, 100);
+}
 
+
+void flashLED( int numflash, int on_time, int off_time ) {
+  // Flash the builtin LED numflash times with on_time and off_time between each one
+  int i;
+  for ( i = 0; i < numflash; i++) {
+    digitalWrite(OPT_LED_PIN, HIGH);
+    delay(on_time);
+    digitalWrite(OPT_LED_PIN, LOW);
+    delay(off_time);
+  }
 }
