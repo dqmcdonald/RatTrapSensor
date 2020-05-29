@@ -74,7 +74,7 @@ void configureID() {
   int bytes_read = Serial.readBytes(&answer, 1);
   if ( bytes_read == 1 && answer == 'y') {
     Serial.println("Enter six character ID");
-    bytes_read = Serial.readBytes(id, 6 );
+    bytes_read = Serial.readBytes(id, 6);
     if ( bytes_read == 6 ) {
       Serial.print("Id = ");
       Serial.println(id);
@@ -145,8 +145,6 @@ void setup() {
   pinMode(OPT_LED_PIN, OUTPUT);
 
 
-  
-
   while (!Serial);
   Serial.begin(9600);
   delay(100);
@@ -195,6 +193,11 @@ void loop() {
   rf95.setModeIdle();
 
   delay(1000);
+
+  // Flash the LED 15 times with a second delay. This will allow time to open up the box and switch
+  // off the device before getting spurious reports when resetting or rebaiting the trap
+  flashLED(15, 500, 1000 );
+
 
   setupLoRa();
 
