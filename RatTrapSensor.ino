@@ -41,6 +41,8 @@
 // Singleton instance of the radio driver
 RH_RF95 rf95(RFM95_CS, RFM95_INT);
 
+char radiopacket[25] = "Trap Sprung:      ";
+
 void flashLED( int numflash, int on_time, int off_time );
 
 // Use pin 2 as wake up pin
@@ -48,7 +50,7 @@ const int WAKE_UP_PIN = 2;
 
 const int ID_LEN = 6;
 // The station ID
-char id[ID_LEN];
+char id[ID_LEN + 1];
 
 const int MAX_RETRIES = 3; // Try to send three times:
 
@@ -87,6 +89,7 @@ void configureID() {
     id[i] = EEPROM.read(i);
   }
 
+  id[ID_LEN] = '\0';
   Serial.print("Using station ID:" );
   Serial.println(id);
 
@@ -153,7 +156,7 @@ void setup() {
 
   configureID();
 
-  
+
 
 
   setupLoRa();
@@ -201,13 +204,14 @@ void loop() {
 
   setupLoRa();
 
-  char radiopacket[20] = "Trap Sprung:      ";
 
-  memcpy( radiopacket + 13, id, 6 );
 
+  memcpy( radiopacket + 12, id, 6 );
+
+  radiopacket[19] = '\0';
   Serial.print("Sending "); Serial.println(radiopacket);
 
-  radiopacket[19] = 0;
+
 
   for ( int attempt = 0; attempt < MAX_RETRIES; attempt++ ) {
 
@@ -228,10 +232,10 @@ void loop() {
 
     rf95.waitPacketSent();
 
-    Serial.print("Time to send (ms) = "); 
-    Serial.println(millis() - send_time); 
+    Serial.print("Time to send (ms) = ");
+    Serial.println(millis() - send_time);
 
-    
+
     // Now wait for a reply
     uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
     uint8_t len = sizeof(buf);
@@ -258,11 +262,11 @@ void loop() {
     }
 
 
-   
+
     delay(1000);
 
   }
- flashLED( 5, 400, 100);
+  flashLED( 5, 400, 100);
 }
 
 
